@@ -1,0 +1,800 @@
+---
+title: "Vándalos vs. Gente de bien - Representaciones sociales en el conflicto social colombiano, Seminario de Psicología Moral 2021 - Uniandes"
+author: "Camilo A. Ordóñez-Pinilla - cód. 201711232, Gino Carmona - cód. xxxxxx, Felipe González Alzate - cód - 201821198, Laura Camila Ortiz - cód. 201622043, Lina Camargo Beltrán - cód. 201819794, Dayanna Orozco- 201616206"
+date: "5/31/2021"
+output: html_document
+---
+
+```{r}
+invisible(utils::memory.limit(8000000))
+```
+
+
+# Introducción
+
+Colombia experimenta actualmente un conflicto social sin precedentes en las últimas décadas de la historia social y política del país. A la fecha, el país se encuentra en un paro nacional que se ha mantenido durante 33 días, marcado por manifestaciones en muchas ciudades del país, así como por una respuesta policial y militar ante tales manifestaciones que ha sido denunciada por muchas organizaciones civiles nacionales e internacionales como violatoria de los derechos humanos. En el presente estudio, buscamos proponer un acercamiento a este conflicto social enmarcado en una concepción general de los conflictos sociales que los entiende como conflictos de representaciones.
+
+En **Conflicto y Representación** propusimos que los conflictos sociales pueden entenderse como estructurados en términos de conflictos entre representaciones. Esto presupone un entendimiento filosófico y psicológico de las representaciones como estructuras cognitivas que dan cuenta de un 'modo de presentación' del mundo -en sentido fregeano-, que se construye subjetivamente, que tiene contenido semántico y condiciones de verdad y que determina las relaciones normativas (principalmente significado y verdad) que tienen los agentes con el mundo. De la multiplicidad de representaciones que las personas tienen para configurar su visión del mundo, consideramos que hay al menos dos que son clave a la hora de entender las representaciones que están en vueltas en un conflicto social: un conflicto entre representaciones sobre la justicia (i.e. si la realidad social es o no justa) y un conflicto entre representaciones de 'los demás' que dificulta la alteridad (i.e. representaciones de los otros como seres muy diferentes a mí mismo, usualmente siendo 'menos' en alguna propiedad moral o psicológica. Los 'otros' en los que estoy en conflicto usualmente son vistos como menos morales, o menos racionales, o menos inteligentes, etc.).
+
+Metodológicamente, consideramos que Twitter puede ser una manera de determinar representaciones sociales y en ese sentido una fuente de datos que nos permita establecer si, en efecto, el actual conflicto social colombiano puede entenderse como un conflicto de representaciones sobre justicia y 'el otro'.
+
+Para el presente reporte hacemos un análisis exploratorio de tweets publicados entre el 28 de abril (día de inicio del paro) y el 31 de mayo. El equipo de investigadores realizó una selección de cuentas de Twitter de influencers que ponen mensajes sobre temas políticos y cuyas posiciones pueden ser fácilmente identificables como a favor o en contra del paro nacional. FALTA EXPLICAR MÁS DEL PROCESO DE SELECCIÓN Y POSIBLEMENTE PONER LA TABLA DE TWEETS ETC.
+
+TABLA 1
+
+# Construcción de la base de datos
+
+Luego de seleccionar las cuentas de Twitter que iban a ser utilizadas, se procedió a descargar los tweets utilizando la plataforma https://www.vicinitas.io/. EXPLICAR MÁS DE LA PLATAFORMA ETC. PONER TABLA CON INFLUENCER Y NÚMERO DE TWEETS DESCARGADOS.
+
+TABLA 2
+
+## Preparación de la base de datos
+
+Todas las operaciones de preparación y análisis de la base de datos se realizaron con el software R, siguiendo las guías de 'Text Mining in Practice with R' de Ted Kwartler y el script de https://juanitorduz.github.io/text-mining-networks-and-visualization-plebiscito-tweets/, usando los siguientes paquetes:
+
+```{r}
+library(glue)
+library (cowplot)
+library (magrittr)
+library (plotly) 
+library (tidyverse)
+library (widyr)
+library (readxl)
+library (stringi)
+library (stringr)
+library (tidytext)
+library (tm) 
+library (wordcloud)
+library (igraph)
+library (networkD3)
+library (qdap)
+library (ggthemes)
+library (RColorBrewer)
+library (knitr)
+library (cli)
+library (kableExtra)
+
+```
+
+
+
+```{r}
+pacman::p_load(glue, cowplot, magrittr, plotly, tidyverse, widyr, readxl, stringi, stringr, tidytext, tm, wordcloud, igraph, networkD3, qdap, ggthemes, RColorBrewer, textnet, cli, glue)
+```
+
+Las siguientes opciones globales se especificaron para el manejo de los datos.
+
+```{r}
+options(stringsAsFactors=F)
+
+```
+
+```{r}
+Sys.setlocale('LC_ALL','C')
+```
+Los datos obtenidos se organizaron en dos archivos: paro.xlsx y antiparo.xlsx
+
+Sobre cada uno de los archivos se realizan las mismas operaciones de preparación y análisis.
+
+```{r}
+paro <- read_excel("D:/CAMILO/paro.xlsx")
+```
+
+```{r}
+antiparo <- read_excel("D:/CAMILO/antiparo.xlsx")
+```
+Sobre los documentos realizamos algunas transformaciones que faciliten el análisis. Primero, reemplazamos las tildes por carácteres sin tildes, cambiamos la ñ por n y eliminamos los patrones '@ nombre_cuenta_twitter'.
+
+```{r}
+
+paro$Text <- gsub("@\\w+ *", "", paro$Text)
+texting <- paro$Text
+texting <- str_replace_all(texting, "á", "a")
+texting <- str_replace_all(texting, "é", "e")
+texting <- str_replace_all(texting, "í", "i")
+texting <- str_replace_all(texting, "ó", "o")
+texting <- str_replace_all(texting, "ú", "u")
+texting <- str_replace_all(texting, "ñ", "n")
+```
+
+Y sobre este documento creamos un Corpora para ser manejado con el paquete tm
+ 
+```{r}
+corpus_paro <- Corpus(x = VectorSource(x = texting))
+
+```
+
+Sobre este Corpus de los tweets a favor del paro creamos transformaciones para eliminar signos de puntuación, palabras comunes con el algoritmo stopwords, poner todo en mayúscula y eliminar manualmente algunas palabras que no son significativas para el análisis y que no fueron eliminadas por el algoritmo de stopwords.
+
+```{r}
+
+corpus_paro <- tm_map(corpus_paro, removePunctuation)
+corpus_paro <- tm_map(corpus_paro, removeWords, stopwords('spanish'))
+corpus_paro <- tm_map(corpus_paro, content_transformer(tolower))
+corpus_paro <- tm_map(corpus_paro, removeWords, c("tanta", "mas", "estan", "que", "tambien", "rt", "hoy", "asi", "ser", "aqui", "por", "los", "solo"))
+
+```
+Y, hacemos una inspección al azar para ver qué la estructura del corpus se aproxime a lo que buscamos
+
+```{r}
+inspect(corpus_paro[1:8])
+```
+
+
+
+
+## Análisis exploratorio
+
+Para realizar los análisis exploratorios, convertimos los corpus a matrices de documento.
+
+```{r}
+tdm_paro <-TermDocumentMatrix(corpus_paro,control=list(weighting
+=weightTf))
+
+
+```
+```{r}
+tdm_tweets_paro <-as.matrix(tdm_paro)
+```
+
+
+
+El primer análisis que hacemos es un análisis de frecuencia que nos muestra los términos más frecuentes en cada matriz.
+
+```{r}
+term.freq_paro<-rowSums(tdm_tweets_paro)
+
+freq.df_paro<-data.frame(word=names(term.freq_paro),
+frequency=term.freq_paro)
+```
+
+```{r}
+freq.df_paro<-freq.df_paro[order(freq.df_paro[,2], decreasing=T),]
+freq.df_paro[1:10,]
+```
+
+```{r}
+freq.df_paro$word<-factor(freq.df_paro$word,
+levels=unique(as.character(freq.df_paro$word)))
+ggplot(freq.df_paro[1:20,], aes(x=word,
+y=frequency))+geom_bar(stat="identity",
+fill='blue')+coord_flip()+theme_gdocs()+
+geom_text(aes(label=frequency),
+colour="orange",hjust=1.25, size=5.0)
+```
+Esto nos permite también calcular algunas asociaciones con los términos más importantes. Tomamos como punto de referencia una correlación de r=.1 (siguiendo la guía de **Text Mining with R**).
+
+
+Y podemos calcular asociaciones
+
+```{r}
+findAssocs(tdm_paro, "colombia", 0.1)
+findAssocs(tdm_paro, "cali", 0.1)
+findAssocs(tdm_paro, "pais", 0.1)
+findAssocs(tdm_paro, "policia", 0.1)
+findAssocs(tdm_paro, "gente", 0.1)
+findAssocs(tdm_paro, "duque", 0.1)
+findAssocs(tdm_paro, "gobierno", 0.1)
+findAssocs(tdm_paro, "paro", 0.1)
+findAssocs(tdm_paro, "esmad", 0.1)
+findAssocs(tdm_paro, "pueblo", 0.1)
+findAssocs(tdm_paro, "jovenes", 0.1)
+findAssocs(tdm_paro, "reforma", 0.1)
+
+findAssocs(tdm_paro, "fuerza", 0.1)
+findAssocs(tdm_paro, "uribe", 0.1)
+findAssocs(tdm_paro, "petro", 0.1)
+findAssocs(tdm_paro, "bloqueos", 0.1)
+findAssocs(tdm_paro, "violencia", 0.1)
+findAssocs(tdm_paro, "vandalismo", 0.1)
+findAssocs(tdm_paro, "policias", 0.1)
+```
+
+```{r}
+library(knitr)
+kable (as.data.frame(findAssocs(tdm_paro, "duque", 0.05)))
+```
+
+Y las convertimos a tablas
+
+```{r}
+
+a <- data.frame(findAssocs(tdm_paro, "colombia", 0.1))
+b <- data.frame (findAssocs(tdm_paro, "cali", 0.1))
+c <- data.frame (findAssocs(tdm_paro, "pais", 0.1))
+d <- data.frame (findAssocs(tdm_paro, "policia", 0.1))
+e <- data.frame (findAssocs(tdm_paro, "gente", 0.1))
+f <- data.frame (findAssocs(tdm_paro, "duque", 0.1))
+g <- data.frame (findAssocs(tdm_paro, "gobierno", 0.1))
+h <- data.frame (findAssocs(tdm_paro, "paro", 0.1))
+i <- data.frame (findAssocs(tdm_paro, "esmad", 0.1))
+j <- data.frame (findAssocs(tdm_paro, "pueblo", 0.1))
+k <- data.frame (findAssocs(tdm_paro, "jovenes", 0.1))
+l <- data.frame (findAssocs(tdm_paro, "reforma", 0.1))
+
+m <- data.frame (findAssocs(tdm_paro, "fuerza", 0.1))
+n <- data.frame (findAssocs(tdm_paro, "uribe", 0.1))
+o <- data.frame (findAssocs(tdm_paro, "petro", 0.1))
+p <- data.frame (findAssocs(tdm_paro, "bloqueos", 0.1))
+q <- data.frame (findAssocs(tdm_paro, "violencia", 0.1))
+r <- data.frame (findAssocs(tdm_paro, "vandalismo", 0.1))
+s <- data.frame (findAssocs(tdm_paro, "policias", 0.1))
+
+a %>%
+  kbl(caption = "Tabla 1 - Correlaciones del término 'colombia' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+b %>%
+  kbl(caption = "Tabla 2 - Correlaciones del término 'cali' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+c %>%
+  kbl(caption = "Tabla 3 - Correlaciones del término 'pais' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+d %>%
+  kbl(caption = "Tabla 4 - Correlaciones del término 'policia' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+e %>%
+  kbl(caption = "Tabla 5 - Correlaciones del término 'gente' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+f %>%
+  kbl(caption = "Tabla 6 - Correlaciones del término 'duque' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+g %>%
+  kbl(caption = "Tabla 7 - Correlaciones del término 'gobierno' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+h %>%
+  kbl(caption = "Tabla 8 - Correlaciones del término 'paro' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+i %>%
+  kbl(caption = "Tabla 9 - Correlaciones del término 'esmad' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+j %>%
+  kbl(caption = "Tabla 10 - Correlaciones del término 'pueblo' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+k %>%
+  kbl(caption = "Tabla 11 - Correlaciones del término 'jovenes' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+l %>%
+  kbl(caption = "Tabla 12 - Correlaciones del término 'reforma' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+m %>%
+  kbl(caption = "Tabla 13 - Correlaciones del término 'fuerza' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+n %>%
+  kbl(caption = "Tabla 14 - Correlaciones del término 'uribe' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+o %>%
+  kbl(caption = "Tabla 15 - Correlaciones del término 'petro' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+p %>%
+  kbl(caption = "Tabla 16 - Correlaciones del término 'bloqueos' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+q %>%
+  kbl(caption = "Tabla 17 - Correlaciones del término 'violencia' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+r %>%
+  kbl(caption = "Tabla 18 - Correlaciones del término 'vandalismo' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+s %>%
+  kbl(caption = "Tabla 19 - Correlaciones del término 'policias' entre los simpatizantes del paro") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+para visualizar la que parece ser más importante
+
+```{r}
+associations<-findAssocs(tdm_paro, 'colombia', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=colombia), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=colombia,
+label=colombia),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 1 - Correlaciones del término 'colombia' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'cali', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=cali), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=cali,
+label=cali),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 2 - Correlaciones del término 'cali' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'pais', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=pais), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=pais,
+label=pais),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 3 - Correlaciones del término 'pais' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'policia', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=policia), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=policia,
+label=policia),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 4 - Correlaciones del término 'policia' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'gente', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=gente), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=gente,
+label=gente),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 5 - Correlaciones del término 'gente' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'duque', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=duque), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=duque,
+label=duque),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 6 - Correlaciones del término 'duque' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'gobierno', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=gobierno), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=gobierno,
+label=gobierno),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 7 - Correlaciones del término 'gobierno' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'paro', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=paro), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=paro,
+label=paro),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 8 - Correlaciones del término 'paro' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'esmad', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=esmad), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=esmad,
+label=esmad),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 9 - Correlaciones del término 'esmad' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'pueblo', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=pueblo), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=pueblo,
+label=pueblo),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 10 - Correlaciones del término 'pueblo' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'jovenes', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=jovenes), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=jovenes,
+label=jovenes),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 11 - Correlaciones del término 'jovenes' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'reforma', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=reforma), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=reforma,
+label=reforma),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 12 - Correlaciones del término 'reforma' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'fuerza', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=fuerza), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=fuerza,
+label=fuerza),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 13 - Correlaciones del término 'fuerza' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'uribe', 0.12)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=uribe), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=uribe,
+label=uribe),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 14 - Correlaciones del término 'uribe' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+Para 'uribe', dado que salían demasiadas palabras, se subió el punto de correlación a r=.12
+
+```{r}
+associations<-findAssocs(tdm_paro, 'petro', 0.12)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=petro), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=petro,
+label=petro),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 15 - Correlaciones del término 'petro' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+Para 'petro', al igual que para Uribe, dado que salían demasiadas palabras, se subió el punto de correlación a r=.12
+
+```{r}
+associations<-findAssocs(tdm_paro, 'bloqueos', 0.15)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=bloqueos), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=bloqueos,
+label=bloqueos),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 16 - Correlaciones del término 'bloqueos' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+Para 'bloqueos', al igual que para Uribe, dado que salían demasiadas palabras, se subió el punto de correlación a r=.15
+
+```{r}
+associations<-findAssocs(tdm_paro, 'violencia', 0.1)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=violencia), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=violencia,
+label=violencia),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 17 - Correlaciones del término 'violencia' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+```{r}
+associations<-findAssocs(tdm_paro, 'vandalismo', 0.15)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=vandalismo), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=vandalismo,
+label=vandalismo),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 18 - Correlaciones del término 'vandalismo' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+Una vez más, para 'vandalismo', dado el alto número de palabras, se subió el punto de corte de la correlación a r=.15
+
+```{r}
+associations<-findAssocs(tdm_paro, 'policias', 0.11)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+
+aa <- (ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=policias), data=associations,
+size=2)+
+theme_gdocs()+ geom_text(aes(x=policias,
+label=policias),
+colour="darkred",hjust=-.25,size=2)+
+theme(text=element_text(size=8),
+axis.title.y=element_blank()))
+aa + ggtitle ("Gráfico 19 - Correlaciones del término 'policias' entre los simpatizantes del paro") +  theme(plot.title = element_text(hjust = 0.5, size = 6, face="bold")) 
+```
+
+La nube de palabras es otra manera de visualizar los términos más importantes
+
+```{r}
+
+dtm_paro <- DocumentTermMatrix(corpus_paro)
+
+frequency <- colSums(as.matrix(dtm_paro))
+
+dev.new(width = 1000, height = 1000, unit = "px")
+
+g <- wordcloud(names(frequency),frequency,min.freq=350,colors=brewer.pal(6,"Dark2"), max.words=20)
+g
+```
+## Justicia
+
+Para evaluar las representaciones sociales de los twitteros que se encuentran a favor y en contra del paro sobre la justicia, desarrollamos un diccionario de términos relacionados con la justicia. Para esto nos basamos en la conceptualización de la justicia distributiva como teniendo tres ejes para definir los criterios de la distribución: justicia como necesidad, justicia como mérito y justicia como equidad. 
+
+Primero creamos los diccionarios
+
+```{r}
+diccionario_justicia <- c ("castigar", "castigo", "competencia", "dedicacion", "dedicado", "disciplina", "duro", "emprendedor", "emprendimiento", "empresa", "esfuerzo", "estudiar", "exito", "exitoso", "fracaso", "fruto", "ganado", "ganador", "ganar", "gane", "logros", "luchador", "merece", "merecer", "merezco", "merito", "merecido", "mia", "mio", "oficio", "perdedor", "pereza", "perezosa", "perezoso", "plata", "premio", "producir", "productivo", "produzco", "propiedad", "propietario", "quitar", "quite", "quiten", "rebuscador", "recompensa", "recompensar", "regalado", "regalo", "reglas", "resaltar", "responsabilidad", "sacrificio", "sacrificios", "sobresalir", "subsidio", "subsidios", "sudor", "superacion", "talento", "trabajador", "trabajadora", "trabajar", "vaga", "vago", "vagos", "vagas", "arriendo", "ayuda", "ayudar", "básica", "básicas", "básico", "básicos", "carencia", "carencias", "comida", "desempleo", "dignidad", "educacion", "entregar", "falta", "hambre", "informalidad", "menos", "mínima", "mínimo", "miseria", "necesaria", "necesario", "necesidad", "necesidades", "necesita", "necesitados", "necesitan", "necesito", "pobre", "pobreza", "precariedad", "prioridad", "recursos", "salud", "sisben", "sobrevivir", "soporte", "supervivencia", "techo", "tienen", "vivienda", "alta", "arribismo", "baja", "clase", "clases", "clasismo", "desigualdad", "distribución", "élite", "equidad", "estrato", "igualdad", "iguales", "igualitario", "inequidad", "oportunidad", "oportunidades", "privilegio", "suerte", "todas", "todes", "todos", "correcto", "deberes", "debería", "deberían", "derechos", "injusta", "injusticia", "injusto", "justa", "justicia", "justo" )
+
+diccionario_justicia_merito <- c("castigar", "castigo", "competencia", "dedicacion", "dedicado", "disciplina", "duro", "emprendedor", "emprendimiento", "empresa", "esfuerzo", "estudiar", "exito", "exitoso", "fracaso", "fruto", "ganado", "ganador", "ganar", "gane", "logros", "luchador", "merece", "merecer", "merezco", "merito", "merecido", "mia", "mio", "oficio", "perdedor", "pereza", "perezosa", "perezoso", "plata", "premio", "producir", "productivo", "produzco", "propiedad", "propietario", "quitar", "quite", "quiten", "rebuscador", "recompensa", "recompensar", "regalado", "regalo", "reglas", "resaltar", "responsabilidad", "sacrificio", "sacrificios", "sobresalir", "subsidio", "subsidios", "sudor", "superacion", "talento", "trabajador", "trabajadora", "trabajar", "vaga", "vago", "vagos", "vagas")
+
+diccionario_justicia_necesidad <- c("arriendo", "ayuda", "ayudar", "básica", "básicas", "básico", "básicos", "carencia", "carencias", "comida", "desempleo", "dignidad", "educacion", "entregar", "falta", "hambre", "informalidad", "menos", "mínima", "mínimo", "miseria", "necesaria", "necesario", "necesidad", "necesidades", "necesita", "necesitados", "necesitan", "necesito", "pobre", "pobreza", "precariedad", "prioridad", "recursos", "salud", "sisben", "sobrevivir", "soporte", "supervivencia", "techo", "tienen", "vivienda")
+
+diccionario_justicia_equidad <- c("alta", "arribismo", "baja", "clase", "clases", "clasismo", "desigualdad", "distribución", "élite", "equidad", "estrato", "igualdad", "iguales", "igualitario", "inequidad", "oportunidad", "oportunidades", "privilegio", "suerte", "todas", "todes", "todos")
+
+diccionario_justicia_normas <- c("correcto", "deberes", "debería", "deberían", "derechos", "injusta", "injusticia", "injusto", "justa", "justicia", "justo")
+
+
+```
+
+Aquí imprimimos las propiedades del objeto donde se almacenan los tweets a favor del paro para ver cuántos términos tiene
+
+```{r}
+print(dtm_paro)
+```
+Así, hay un total de 32097
+
+```{r}
+total_paro = 32097
+```
+
+ahora quitamos los términos de justicia
+
+```{r}
+justicia <- tm_map(corpus_paro, removeWords, diccionario_justicia)
+justicia <- DocumentTermMatrix(justicia)
+print(justicia)
+
+```
+Y encontramos que hay un total de 31953 términos
+
+```{r}
+paro_sin_justicia = 31953
+```
+
+Lo que nos permite calcular el porcentaje de lenguaje de justicia
+
+```{r}
+paro_lenguaje_justicia <- ((total_paro - paro_sin_justicia)/total_paro)*100
+paro_lenguaje_justicia
+```
+En los tweets sobre el paro tenemos un 0.44% de lenguaje sobre justicia. 
+
+Diferenciado sobre tipos de justicia
+
+Quitamos los de justicia como merito
+
+```{r}
+justicia <- tm_map(corpus_paro, removeWords, diccionario_justicia_merito)
+justicia <- DocumentTermMatrix(justicia)
+print(justicia)
+
+```
+```{r}
+paro_sin_justicia_merito = 32037
+```
+
+Y ahora calculamos el porcentage
+
+```{r}
+paro_lenguaje_justicia <- ((total_paro - paro_sin_justicia_merito)/total_paro)*100
+paro_lenguaje_justicia
+```
+Lo que nos muestra que hay un 0.18% de lenguaje sobre justicia como mérito
+
+
+Ahora quitamos justicia como necesidad
+
+```{r}
+justicia <- tm_map(corpus_paro, removeWords, diccionario_justicia_necesidad)
+justicia <- DocumentTermMatrix(justicia)
+print(justicia)
+
+```
+```{r}
+paro_sin_justicia_necesidad = 32053
+```
+
+```{r}
+paro_lenguaje_justicia <- ((total_paro - paro_sin_justicia_necesidad)/total_paro)*100
+paro_lenguaje_justicia
+```
+Lo que nos muestra que hay un 0.13% de lenguaje sobre justicia como necesidad
+
+En cuanto a la justicia como equidad
+
+```{r}
+justicia <- tm_map(corpus_paro, removeWords, diccionario_justicia_equidad)
+justicia <- DocumentTermMatrix(justicia)
+print(justicia)
+
+```
+```{r}
+paro_sin_justicia_equidad = 32072
+```
+
+```{r}
+paro_lenguaje_justicia <- ((total_paro - paro_sin_justicia_equidad)/total_paro)*100
+paro_lenguaje_justicia
+```
+Vemos que es la de menor incidencia, con un 0.07% del lenguaje.
+
+Por último, el lenguaje normativo y sobre justicia 
+
+```{r}
+justicia <- tm_map(corpus_paro, removeWords, diccionario_justicia_normas)
+justicia <- DocumentTermMatrix(justicia)
+print(justicia)
+
+```
+```{r}
+paro_sin_justicia_normas = 32082
+```
+
+```{r}
+paro_lenguaje_justicia <- ((total_paro - paro_sin_justicia_normas)/total_paro)*100
+paro_lenguaje_justicia
+```
+Encontramos que un 0.04% del lenguaje es lenguaje general sobre justicia y normas.
+
+
+
+
+
+
+

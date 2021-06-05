@@ -1,0 +1,239 @@
+---
+title: Vándalos vs. Gente de bien - Representaciones sociales en el conflicto social
+  colombiano, Seminario de Psicología Moral 2021 - Uniandes
+author: Camilo A. Ordóñez-Pinilla - cód. 201711232, Gino Carmona - cód. xxxxxx, Felipe
+  González Alzate - cód - 201821198, Laura Camila Ortiz - cód. 201622043, Lina Camargo
+  Beltrán - cód. 201819794, Dayanna Orozco- 201616206
+date: "5/31/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Introducción
+
+Colombia experimenta actualmente un conflicto social sin precedentes en las últimas décadas de la historia social y política del país. A la fecha, el país se encuentra en un paro nacional que se ha mantenido durante 33 días, marcado por manifestaciones en muchas ciudades del país, así como por una respuesta policial y militar ante tales manifestaciones que ha sido denunciada por muchas organizaciones civiles nacionales e internacionales como violatoria de los derechos humanos. En el presente estudio, buscamos proponer un acercamiento a este conflicto social enmarcado en una concepción general de los conflictos sociales que los entiende como conflictos de representaciones.
+
+En **Conflicto y Representación** propusimos que los conflictos sociales pueden entenderse como estructurados en términos de conflictos entre representaciones. Esto presupone un entendimiento filosófico y psicológico de las representaciones como estructuras cognitivas que dan cuenta de un 'modo de presentación' del mundo -en sentido fregeano-, que se construye subjetivamente, que tiene contenido semántico y condiciones de verdad y que determina las relaciones normativas (principalmente significado y verdad) que tienen los agentes con el mundo. De la multiplicidad de representaciones que las personas tienen para configurar su visión del mundo, consideramos que hay al menos dos que son clave a la hora de entender las representaciones que están en vueltas en un conflicto social: un conflicto entre representaciones sobre la justicia (i.e. si la realidad social es o no justa) y un conflicto entre representaciones de 'los demás' que dificulta la alteridad (i.e. representaciones de los otros como seres muy diferentes a mí mismo, usualmente siendo 'menos' en alguna propiedad moral o psicológica. Los 'otros' en los que estoy en conflicto usualmente son vistos como menos morales, o menos racionales, o menos inteligentes, etc.).
+
+Metodológicamente, consideramos que Twitter puede ser una manera de determinar representaciones sociales y en ese sentido una fuente de datos que nos permita establecer si, en efecto, el actual conflicto social colombiano puede entenderse como un conflicto de representaciones sobre justicia y 'el otro'.
+
+Para el presente reporte hacemos un análisis exploratorio de tweets publicados entre el 28 de abril (día de inicio del paro) y el 31 de mayo. El equipo de investigadores realizó una selección de cuentas de Twitter de influencers que ponen mensajes sobre temas políticos y cuyas posiciones pueden ser fácilmente identificables como a favor o en contra del paro nacional. FALTA EXPLICAR MÁS DEL PROCESO DE SELECCIÓN Y POSIBLEMENTE PONER LA TABLA DE TWEETS ETC.
+
+TABLA 1
+
+# Construcción de la base de datos
+
+Luego de seleccionar las cuentas de Twitter que iban a ser utilizadas, se procedió a descargar los tweets utilizando la plataforma https://www.vicinitas.io/. EXPLICAR MÁS DE LA PLATAFORMA ETC. PONER TABLA CON INFLUENCER Y NÚMERO DE TWEETS DESCARGADOS.
+
+TABLA 2
+
+## Preparación de la base de datos
+
+Todas las operaciones de preparación y análisis de la base de datos se realizaron con el software R, siguiendo las guías de 'Text Mining in Practice with R' de Ted Kwartler y el script de https://juanitorduz.github.io/text-mining-networks-and-visualization-plebiscito-tweets/, usando los siguientes paquetes:
+
+
+```{r}
+pacman::p_load(glue, cowplot, magrittr, plotly, tidyverse, widyr, readxl, stringi, stringr, tidytext, tm, wordcloud, igraph, networkD3, qdap, ggthemes, RColorBrewer, textnet, cli, glue)
+```
+
+Las siguientes opciones globales se especificaron para el manejo de los datos.
+
+```{r}
+options(stringsAsFactors=F)
+
+```
+
+```{r}
+Sys.setlocale('LC_ALL','C')
+```
+Los datos obtenidos se organizaron en dos archivos: ANTIPARO.xlsx
+
+Sobre cada uno de los archivos se realizan las mismas operaciones de preparación y análisis.
+
+```{r}
+antiparo <- read_excel("D:/CAMILO/antiparo.xlsx")
+```
+
+```{r}
+
+```
+Sobre los documentos realizamos algunas transformaciones que faciliten el análisis. Primero, reemplazamos las tildes por carácteres sin tildes, cambiamos la ñ por n y eliminamos los patrones '@ nombre_cuenta_twitter'.
+
+```{r}
+
+antiparo$Text <- gsub("@\\w+ *", "", antiparo$Text)
+texting <- antiparo$Text
+texting <- str_replace_all(texting, "á", "a")
+texting <- str_replace_all(texting, "é", "e")
+texting <- str_replace_all(texting, "í", "i")
+texting <- str_replace_all(texting, "ó", "o")
+texting <- str_replace_all(texting, "ú", "u")
+texting <- str_replace_all(texting, "ñ", "n")
+```
+
+Y sobre este documento creamos un Corpora para ser manejado con el paquete tm
+ 
+```{r}
+corpus_antiparo <- Corpus(x = VectorSource(x = texting))
+
+```
+
+Sobre este Corpus de los tweets en contra del paro creamos transformaciones para eliminar signos de puntuación, palabras comunes con el algoritmo stopwords, poner todo en mayúscula y eliminar manualmente algunas palabras que no son significativas para el análisis y que no fueron eliminadas por el algoritmo de stopwords.
+
+```{r}
+
+corpus_antiparo <- tm_map(corpus_antiparo, removePunctuation)
+corpus_antiparo <- tm_map(corpus_antiparo, removeWords, stopwords('spanish'))
+corpus_antiparo <- tm_map(corpus_antiparo, content_transformer(tolower))
+corpus_antiparo <- tm_map(corpus_antiparo, removeWords, c("tanta", "mas", "estan", "que", "tambien", "rt", "hoy", "asi", "ser", "aqui", "por", "los", "solo"))
+
+```
+Y, hacemos una inspección al azar para ver qué la estructura del corpus se aproxime a lo que buscamos
+
+```{r}
+inspect(corpus_antiparo[1:8])
+```
+
+
+
+
+## Análisis exploratorio
+
+Para realizar los análisis exploratorios, convertimos los corpus a matrices de documento.
+
+```{r}
+tdm_antiparo <-TermDocumentMatrix(corpus_antiparo,control=list(weighting
+=weightTf))
+
+
+```
+```{r}
+tdm_tweets_antiparo <-as.matrix(tdm_antiparo)
+```
+
+
+
+El primer análisis que hacemos es un análisis de frecuencia que nos muestra los términos más frecuentes en cada matriz.
+
+```{r}
+term.freq_antiparo<-rowSums(tdm_tweets_antiparo)
+
+freq.df_antiparo<-data.frame(word=names(term.freq_antiparo),
+frequency=term.freq_antiparo)
+```
+
+```{r}
+freq.df_antiparo<-freq.df_antiparo[order(freq.df_antiparo[,2], decreasing=T),]
+freq.df_antiparo[1:10,]
+```
+
+```{r}
+freq.df_antiparo$word<-factor(freq.df_antiparo$word,
+levels=unique(as.character(freq.df_antiparo$word)))
+ggplot(freq.df_antiparo[1:20,], aes(x=word,
+y=frequency))+geom_bar(stat="identity",
+fill='blue')+coord_flip()+theme_gdocs()+
+geom_text(aes(label=frequency),
+colour="orange",hjust=1.25, size=5.0)
+```
+Esto nos permite también calcular algunas asociaciones con los términos más importantes. Tomamos como punto de referencia una correlación de r=.5
+
+
+And we can calculate associations
+
+```{r}
+findAssocs(tdm_antiparo, "colombia", 0.5)
+findAssocs(tdm_antiparo, "cali", 0.5)
+findAssocs(tdm_antiparo, "pais", 0.5)
+findAssocs(tdm_antiparo, "paro", 0.5)
+findAssocs(tdm_antiparo, "violencia", 0.5)
+findAssocs(tdm_antiparo, "bloqueos", 0.5)
+findAssocs(tdm_antiparo, "fuerza", 0.5)
+findAssocs(tdm_antiparo, "publica", 0.5)
+findAssocs(tdm_antiparo, "petro", 0.5)
+findAssocs(tdm_antiparo, "vandalismo", 0.5)
+```
+Bajando el punto de corte
+
+```{r}
+findAssocs(tdm_antiparo, "colombia", 0.2)
+findAssocs(tdm_antiparo, "cali", 0.2)
+findAssocs(tdm_antiparo, "pais", 0.2)
+findAssocs(tdm_antiparo, "paro", 0.2)
+findAssocs(tdm_antiparo, "violencia", 0.2)
+findAssocs(tdm_antiparo, "bloqueos", 0.2)
+findAssocs(tdm_antiparo, "fuerza", 0.2)
+findAssocs(tdm_antiparo, "publica", 0.2)
+findAssocs(tdm_antiparo, "petro", 0.2)
+findAssocs(tdm_antiparo, "vandalismo", 0.2)
+```
+
+```{r}
+findAssocs(tdm_antiparo, "petro", 0.05)
+```
+
+```{r}
+findAssocs(tdm_antiparo, "duque", 0.05)
+```
+
+```{r}
+findAssocs(tdm_antiparo, "paro", 0.05)
+findAssocs(tdm_antiparo, "colombia", 0.05)
+```
+
+```{r}
+findAssocs(tdm_antiparo, "pais", 0.05)
+findAssocs(tdm_antiparo, "cali", 0.05)
+```
+
+```{r}
+findAssocs(tdm_antiparo, "fuerza", 0.05)
+findAssocs(tdm_antiparo, "publica", 0.05)
+```
+
+
+para visualizar la que parece ser más importante
+
+```{r}
+associations<-findAssocs(tdm_antiparo, 'colombia', 0.2)
+associations<-as.data.frame(associations)
+associations$terms<-row.names(associations)
+associations$terms<-factor(associations$terms,
+levels=associations$terms)
+```
+
+```{r}
+ggplot(associations, aes(y=terms)) +
+geom_point(aes(x=colombia), data=associations,
+size=5)+
+theme_gdocs()+ geom_text(aes(x=colombia,
+label=colombia),
+colour="darkred",hjust=-.25,size=8)+
+theme(text=element_text(size=20),
+axis.title.y=element_blank())
+```
+La nube de palabras es otra manera de visualizar.
+
+```{r}
+
+dtm_antiparo <- DocumentTermMatrix(corpus_antiparo)
+
+frequency <- colSums(as.matrix(dtm_antiparo))
+
+dev.new(width = 1000, height = 1000, unit = "px")
+
+wordcloud(names(frequency),frequency,min.freq=350,colors=brewer.pal(6,"Dark2"), max.words=20)
+```
+
+
+
+
+
+
+
+
+
+
+
+
